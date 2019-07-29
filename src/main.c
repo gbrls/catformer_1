@@ -6,12 +6,18 @@ SDL_Window* window = NULL;
 SDL_Surface* screen_surf = NULL;
 SDL_Surface* sprite_surf = NULL;
 
+float PLAYER_SPEED = 0.1;
+float JUMP_SPEED = -1;
+float JUMP_DES = 0.005;
+
+float FLOOR = 120;
+
 typedef enum {
     WALING = 0,
     IDLE = 4,
-    FALL = 6,
-    JUMPING = 8,
-    CLIMBING = 10,
+    FALL = 8,
+    JUMPING = 10,
+    CLIMBING = 12,
 
 }PlayerState;
 
@@ -28,23 +34,84 @@ u32 anim_duration(PlayerState state) {
 
 typedef struct Player {
     float anim_frame;
-    i64 xpos;
-    i64 ypos;
+    float xpos;
+    float ypos;
+
+    float xspeed;
+    float yspeed;
 
     PlayerState state;
 
 }Player;
 
+u32 anim_frame(Player p) {
+    return ((u32)p.anim_frame % anim_duration(p.state)) + p.state;
+}
+
+void player_fall(Player* p){
+
+    //printf("%0.2f %0.2f", p->ypos, p->yspeed);
+    if(p->yspeed > 0) {
+        p->state = FALL;
+    }
+
+    if((p->ypos + p->yspeed) > FLOOR){
+        p->yspeed = 0;
+        p->ypos = FLOOR;
+
+        p->state = IDLE;
+
+        return;
+    }
+
+    p->ypos += p->yspeed;
+
+    p->yspeed += JUMP_DES;
+}
+
 void update_player(Player* p) {
     //p->anim_frame = (float)((u32)p->anim_frame % 4);
     p->anim_frame += 0.01;
 
+    p->xpos += p->xspeed;
+
+    switch(p->state){
+    case FALL: player_fall(p); break;
+    case JUMPING: player_fall(p); break;
+    default: break;
+    }
+
 }
 
-u32 anim_frame(Player p) {
-   return ((u32)p.anim_frame % anim_duration(p.state)) + p.state;
+void player_keydown(Player *p, SDL_Keycode key) {
+    switch (p->state){
 
+    case IDLE: switch(key){
+        case SDLK_d: p->xspeed = PLAYER_SPEED;p->state = WALING; break;
+        case SDLK_w: p->yspeed = JUMP_SPEED;p->state = JUMPING; break;
+
+        default: printf("code: %d\n", key); break;
+        }; break;
+
+    default: break;
+    }
 }
+
+void player_keyup(Player *p, SDL_Keycode key) {
+    switch (p->state){
+
+    case WALING: switch(key){
+        case SDLK_d: p->xspeed = 0; p->state = IDLE; break;
+
+        default: printf("code: %d\n", key); break;
+        }; break;
+
+    default: break;
+    }
+}
+
+
+
 
 int check(void* data, char* message) {
     if(data == NULL){
@@ -108,7 +175,7 @@ int main(int argc, char** argv) {
     int quit = 0;
     SDL_Event e;
 
-    Player player = {.anim_frame = 0, .xpos = 0, .ypos = 0, .state = IDLE};
+    Player player = {.anim_frame = 0, .xpos = 0, .ypos = FLOOR, .state = IDLE};
 
 
     while(!quit) {
@@ -120,15 +187,20 @@ int main(int argc, char** argv) {
                 quit = 1;
             }
 
+            //*TODO create a key buffer, to use multiple keys
             if(e.type == SDL_KEYDOWN) {
-                switch(e.key.keysym.sym) {
 
+                player_keydown(&player, e.key.keysym.sym);
+
+                switch(e.key.keysym.sym) {
                 case SDLK_ESCAPE:
                     quit = 1; break;
-                default:
-                    break;
-
+                default: break;
                 }
+            }
+
+            if(e.type == SDL_KEYUP) {
+                player_keyup(&player, e.key.keysym.sym);
             }
         }
 
@@ -138,7 +210,7 @@ int main(int argc, char** argv) {
 
 
         SDL_Rect src = {.x = (frame) * 8, .y = 0, .w = 8, .h = 8};
-        SDL_Rect dst = {.x = 50, .y = 100, .w = 80, .h = 80};
+        SDL_Rect dst = {.x = (int)player.xpos, .y = (int)player.ypos, .w = 80, .h = 80};
 
         SDL_BlitScaled(sprite_surf, &src, screen_surf, &dst);
         SDL_UpdateWindowSurface(window);

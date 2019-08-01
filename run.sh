@@ -1,5 +1,5 @@
 #!/bin/sh
 cd $1
-rm ./catformer
-make
+time make
 ./catformer
+make clean

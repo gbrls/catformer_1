@@ -1,9 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+
+//#ifdef __linux__
 #include <SDL2/SDL.h>
+//#endif
+
+//#ifdef _WIN32
+//#include "SDL.h"
+//#endif
+
 #include "../include/types.h"
 #include "../include/pixel.h"
 #include "../include/font.h"
+#include "../include/map.h"
 
 SDL_Window* window = NULL;
 SDL_Surface* screen_surf = NULL;
@@ -22,6 +31,7 @@ float JUMP_SPEED = -0.7;
 float JUMP_DES = 0.002;
 
 float FLOOR = 120;
+i8 PLAYER_LAYER = 1;
 
 char DEBUG_TEXT[200];
 char FPS_TEXT[50];
@@ -43,13 +53,15 @@ typedef enum {
     Undefined = 0,
 }TileType;
 
-//TODO finish converting platform to tilemap
 typedef struct Tile {
     i32 xpos;
     i32 ypos;
 
     int active;
     TileType type;
+    u32 index;
+
+    // The player lives in the 1 layer
     i8 layer;
 
 }Tile;
@@ -57,8 +69,10 @@ typedef struct Tile {
 Tile GameMap[MAP_HEIGHT * MAP_WIDTH];
 
 
-void add_platform(i32 xpos, i32 ypos){
+void add_platform(i32 xpos, i32 ypos, i8 layer, u32 index){
     GameMap[xpos + (ypos * MAP_WIDTH)].active = 1;
+    GameMap[xpos + (ypos * MAP_WIDTH)].layer = layer;
+    GameMap[xpos + (ypos * MAP_WIDTH)].index = index;
 }
 
 
@@ -69,15 +83,17 @@ void start_GameMap() {
     for(size_t i = 0; i < size-1; i++) GameMap[i].active = 0;
 
 
-    add_platform(0, 4);
-    add_platform(1, 4);
-    add_platform(2, 5);
-    add_platform(3, 4);
+    u32 index = 46;
+
+    add_platform(0, 4, 1, index);
+    add_platform(1, 4, 0, 48);
+    add_platform(2, 5, 1, index);
+    add_platform(3, 4, 1, index);
     //add_platform(2, 5, 150);
-    add_platform(5, 8);
-    add_platform(6, 7);
-    add_platform(7, 6);
-    add_platform(8, 5);
+    add_platform(5, 8, 1, index);
+    add_platform(6, 7, 1, index);
+    add_platform(7, 6, 1, index);
+    add_platform(8, 5, 1, index);
 
     //add_platform(6, 3);
     //add_platform(7, 4);
@@ -93,7 +109,10 @@ void draw_GameMap() {
 
         i32 final_size = (PIXEL_SIZE * CELL_SIZE);
 
-        SDL_Rect src = {.x = (7) * CELL_SIZE, .y = (2) * CELL_SIZE, .w = CELL_SIZE, .h = CELL_SIZE};
+        i32 x = GameMap[i].index % MAP_WIDTH;
+        i32 y = GameMap[i].index / MAP_WIDTH;
+
+        SDL_Rect src = {.x = (x) * CELL_SIZE, .y = (y) * CELL_SIZE, .w = CELL_SIZE, .h = CELL_SIZE};
         SDL_Rect dst = {.x = (i%MAP_WIDTH) * final_size, .y = (i/MAP_WIDTH) * final_size, .w = final_size, .h = final_size};
 
         SDL_BlitScaled(sprite_surf, &src, screen_surf, &dst);
@@ -145,12 +164,12 @@ float get_floor(float xpos, float ypos) {
 
     for(u32 i = y-1; i < MAP_HEIGHT - 2; i++){
 
-        if(GameMap[min_x + ((i+1) * MAP_WIDTH)].active) {
+        if(GameMap[min_x + ((i+1) * MAP_WIDTH)].layer == PLAYER_LAYER) {
             sprintf(DEBUG_TEXT,"%d\n", i);
             floor =  min((i * (PIXEL_SIZE * CELL_SIZE)), floor);
         }
 
-        if(GameMap[max_x + ((i+1) * MAP_WIDTH)].active) {
+        if(GameMap[max_x + ((i+1) * MAP_WIDTH)].layer == PLAYER_LAYER) {
             sprintf(DEBUG_TEXT,"%d\n", i);
             floor =  min((i * (PIXEL_SIZE * CELL_SIZE)), floor);
         }
@@ -176,13 +195,29 @@ void draw_player(Player* player){
 void player_fall(Player* p, float elapsed){
 
     //printf("%0.2f %0.2f", p->ypos, p->yspeed);
+
+    p->yspeed += JUMP_DES * elapsed;
+    float delta_ypos = p->yspeed * elapsed;
+
     if(p->yspeed > 0) {
         p->state = FALL;
     } else {
         p->state = JUMPING;
     }
 
-        if((p->ypos + p->yspeed) > get_floor(p->xpos, p->ypos)){
+    // Head collision
+    if(p->state == JUMPING){
+        if(get_floor(p->xpos, p->ypos) != get_floor(p->xpos, p->ypos + delta_ypos)) {
+            //TODO how to handle head collision?
+            printf("Head hit\n");
+            p->yspeed = 0;
+            return;
+        }
+    }
+
+    // Floor collision
+    if((p->ypos + delta_ypos) > get_floor(p->xpos, p->ypos)){
+
         p->yspeed = 0;
         p->ypos = get_floor(p->xpos, p->ypos);
 
@@ -196,8 +231,7 @@ void player_fall(Player* p, float elapsed){
     }
 
 
-    p->yspeed += JUMP_DES * elapsed;
-    p->ypos += p->yspeed * elapsed;
+    p->ypos += delta_ypos;
 }
 
 void update_player(Player* p, float elapsed) {
@@ -336,6 +370,12 @@ int load_sprite(char* path) {
     return 0;
 }
 
+//TODO implement level loading from CSV
+void load_level(i32* data, i8 layer){
+}
+
+
+
 typedef struct FPSTimer {
     u32 reference_time;
     u32 to_count;
@@ -376,11 +416,13 @@ int main(int argc, char** argv) {
     start_GameMap();
     load_sprite("/home/gabriel/Programming/Games/Assets/0x72_8x8TilesetF24.v1.bmp");
 
+    parse_file("/home/gabriel/Programming/Games/Assets/maps/catformer_1_background.csv");
+
     int quit = 0;
     SDL_Event e;
 
     Player player = {.anim_frame = 0, .xpos = 0, .ypos = FLOOR, .state = IDLE};
-    FPSTimer timer = {.reference_time = SDL_GetTicks(), .to_count = 1000, .counted = 0};
+    FPSTimer timer = {.reference_time = SDL_GetTicks(), .to_count = 100, .counted = 0};
 
 
     while(!quit) {

@@ -21,6 +21,8 @@ SDL_Surface* font = NULL;
 
 u8 CELL_SIZE = 8;
 
+u8 COIN = 32;
+
 float PIXEL_SIZE = 6.5;
 float TEXT_SCALING = 0.5;
 
@@ -64,6 +66,9 @@ typedef struct Tile {
     // The player lives in the 1 layer
     i8 layer;
 
+    // the coin animation
+    float anim_frame;
+
 }Tile;
 
 Tile GameMap[MAP_HEIGHT * MAP_WIDTH];
@@ -75,6 +80,10 @@ void add_platform(i32 xpos, i32 ypos, i8 layer, u32 index){
     GameMap[xpos + (ypos * MAP_WIDTH)].index = index;
 }
 
+void add_coin(i32 xpos, i32 ypos){
+    add_platform(xpos, ypos, 0, COIN);
+}
+
 
 void start_GameMap() {
     printf("Creating GameMap\n");
@@ -82,22 +91,22 @@ void start_GameMap() {
     size_t size = sizeof(GameMap)/sizeof(GameMap[0]);
     for(size_t i = 0; i < size-1; i++) GameMap[i].active = 0;
 
-
     u32 index = 46;
 
     add_platform(0, 4, 1, index);
-    add_platform(1, 4, 0, 48);
     add_platform(2, 5, 1, index);
     add_platform(3, 4, 1, index);
-    //add_platform(2, 5, 150);
     add_platform(5, 8, 1, index);
     add_platform(6, 7, 1, index);
     add_platform(7, 6, 1, index);
     add_platform(8, 5, 1, index);
 
-    //add_platform(6, 3);
-    //add_platform(7, 4);
+    add_coin(1, 4);
+    add_coin(2, 3);
+    add_coin(3, 3);
 
+
+    add_coin(5, 3);
 }
 
 void draw_GameMap() {
@@ -106,13 +115,14 @@ void draw_GameMap() {
     for(size_t i = 0; i < size; i++) {
 
         if(!GameMap[i].active) continue;
+        if(GameMap[i].index == COIN) GameMap[i].anim_frame += ANIM_SPEED;
 
         i32 final_size = (PIXEL_SIZE * CELL_SIZE);
 
         i32 x = GameMap[i].index % MAP_WIDTH;
         i32 y = GameMap[i].index / MAP_WIDTH;
 
-        SDL_Rect src = {.x = (x) * CELL_SIZE, .y = (y) * CELL_SIZE, .w = CELL_SIZE, .h = CELL_SIZE};
+        SDL_Rect src = {.x = (x + ((u32)GameMap[i].anim_frame)%4) * CELL_SIZE, .y = (y) * CELL_SIZE, .w = CELL_SIZE, .h = CELL_SIZE};
         SDL_Rect dst = {.x = (i%MAP_WIDTH) * final_size, .y = (i/MAP_WIDTH) * final_size, .w = final_size, .h = final_size};
 
         SDL_BlitScaled(sprite_surf, &src, screen_surf, &dst);
@@ -147,6 +157,8 @@ typedef struct Player {
     float xspeed;
     float yspeed;
 
+    u32 coins;
+
     PlayerState state;
 
 }Player;
@@ -165,12 +177,10 @@ float get_floor(float xpos, float ypos) {
     for(u32 i = y-1; i < MAP_HEIGHT - 2; i++){
 
         if(GameMap[min_x + ((i+1) * MAP_WIDTH)].layer == PLAYER_LAYER) {
-            sprintf(DEBUG_TEXT,"%d\n", i);
             floor =  min((i * (PIXEL_SIZE * CELL_SIZE)), floor);
         }
 
         if(GameMap[max_x + ((i+1) * MAP_WIDTH)].layer == PLAYER_LAYER) {
-            sprintf(DEBUG_TEXT,"%d\n", i);
             floor =  min((i * (PIXEL_SIZE * CELL_SIZE)), floor);
         }
     }
@@ -235,7 +245,17 @@ void player_fall(Player* p, float elapsed){
 }
 
 void update_player(Player* p, float elapsed) {
-    //sprintf(DEBUG_TEXT, "A:%d;B:%d", (int)(p->xpos / (PIXEL_SIZE * CELL_SIZE) ), (int)p->ypos);
+
+    i32 x = (i32)(p->xpos/(PIXEL_SIZE * CELL_SIZE));
+    i32 y = (i32)(p->ypos/(PIXEL_SIZE * CELL_SIZE));
+
+    //sprintf(DEBUG_TEXT, "A:%d;B:%d", x, y);
+    sprintf(DEBUG_TEXT, "%d", p->coins);
+
+    if(GameMap[x + (y * MAP_WIDTH)].active && GameMap[x + (y * MAP_WIDTH)].index == COIN) {
+        GameMap[x + (y * MAP_WIDTH)].active = 0;
+        p->coins += 1;
+    }
 
     p->anim_frame += elapsed * ANIM_SPEED;
     //p->xpos += p->xspeed * elapsed;
@@ -416,12 +436,13 @@ int main(int argc, char** argv) {
     start_GameMap();
     load_sprite("/home/gabriel/Programming/Games/Assets/0x72_8x8TilesetF24.v1.bmp");
 
-    parse_file("/home/gabriel/Programming/Games/Assets/maps/catformer_1_background.csv");
+    // TODO implement csv parsing
+    //parse_file("/home/gabriel/Programming/Games/Assets/maps/catformer_1_background.csv");
 
     int quit = 0;
     SDL_Event e;
 
-    Player player = {.anim_frame = 0, .xpos = 0, .ypos = FLOOR, .state = IDLE};
+    Player player = {.anim_frame = 0, .xpos = 0, .ypos = FLOOR, .state = IDLE, .coins = 0};
     FPSTimer timer = {.reference_time = SDL_GetTicks(), .to_count = 100, .counted = 0};
 
 

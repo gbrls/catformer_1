@@ -3,6 +3,8 @@
 #include "../include/types.h"
 #include "../include/map.h"
 
+
+//TODO oh shit this doesnt work
 i32* parse_file(char* filename){
 
     FILE* f = fopen(filename, "r");
@@ -21,10 +23,16 @@ i32* parse_file(char* filename){
         if(c == EOF) break;
     }
 
+    i32 game_map[20 * 20];
 
+    for(size_t i = 0; buffer[i] != EOF; i++) {
+        int scanned;
 
-
-    printf("The file (%s) contains %d characters\n", buffer, total_chars);
+        if(!sscanf(buffer + i, "%d", &scanned)) {
+            printf("%d\n", scanned);
+            game_map[i] = scanned;
+        }
+    }
 
     return 0;
 }
